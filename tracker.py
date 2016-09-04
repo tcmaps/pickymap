@@ -105,7 +105,7 @@ def main():
     S = Server(); S.setDaemon(daemonic=True); S.start() 
     
     log.info('Generating THE GRID...')
-    grid = hex_spiral(origin[0], origin[1], config.radius, 15)
+    grid = hex_spiral(origin[0], origin[1], config.radius, 200)
     
     while True:
         
