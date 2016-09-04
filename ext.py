@@ -72,7 +72,7 @@ def cover_circle(lat, lng, radius, level=15):
 def getEarthRadius(latrad):
     return (1.0 / (((math.cos(latrad)) / 6378137.0) ** 2 + ((math.sin(latrad)) / 6356752.3) ** 2)) ** (1.0 / 2)
 
-def hex_spiral(lat_org, lng_org, dist, layers):
+def hex_spiral(lat_org, lng_org, layers, dist):
     latrad = lat_org * math.pi / 180
 
     x_un = 1.5 * dist / getEarthRadius(latrad) / math.cos(latrad) * 0.999 * 180 / math.pi # unity vector in x direction in degrees
