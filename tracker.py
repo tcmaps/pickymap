@@ -13,7 +13,7 @@ import folium
 import json, argparse
 
 from bottle import route, run, static_file
-from time import strftime, localtime
+from time import strftime, localtime, sleep
 from threading import Thread
 
 from ext import *
@@ -67,7 +67,7 @@ def serve_map():
     pokemap = folium.Map(location=[origin[0],origin[1]],zoom_start=12,tiles=tileset,attr=kudos)
     
     for c in covers:
-        folium.CircleMarker(c, radius=200, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
+        folium.CircleMarker(c, radius=70, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
     
     for p in Pactive:
         if p[3] > 0: t = strftime('%H:%M:%S', time.localtime(int(p[3]/1000)))
@@ -97,15 +97,15 @@ def main():
     ignore = get_ignorelist('ignore.txt')
     pokes = get_pokenames('pokes.txt')
     
-    icons = []
-    for i in range(0,151):
-        icons.append(folium.features.CustomIcon('./icons/%d.png' % i, icon_size=(32, 32)))
+    log.info("Loading icons..."); icons = [] 
+    for i in xrange(0,151):
+        icons.append(folium.features.CustomIcon('./icons/%d.png' % i))
 
     origin = get_pos_by_name(config.location)
     S = Server(); S.setDaemon(daemonic=True); S.start() 
     
-    log.info('Generating THE GRID...')
-    grid = hex_spiral(origin[0], origin[1], config.layers, 200)
+    log.info('Generating Hexgrid...')
+    grid = hex_spiral(origin[0], origin[1], 200, config.layers)
     
     while True:
         
@@ -113,16 +113,15 @@ def main():
         covers = []
         for pos in grid:
     
-            lat = pos.lat().degrees
-            lng = pos.lng().degrees
+            plat,plng = pos[0],pos[1]
                     
-            cell_ids = get_cell_ids(cover_circle(lat, lng, 210, 15))
+            cell_ids = get_cell_ids(cover_circle(plat, plng, 210, 15))
 
             log.info('Scan location %d of %d' % (m,len(grid))); m+=1
             timestamps = [0,] * len(cell_ids)
-            api.set_position(lat, lng, origin[2])
-            response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-            if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+            api.set_position(plat, plng, origin[2])
+            response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+            if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
             if response_dict is None or len(response_dict) == 0: continue
             
             Ctargets = []
@@ -152,41 +151,44 @@ def main():
 
             if len(Ptargets) > 0:
                 
-                targetcells = cover_circle(lat, lng, 201.5, 17)
+                subgrid = hex_spiral(plat, plng, 70, 2)
+                subgrid.pop(0) # already scanned in main thread
 
-                s = 1
-                for cell in targetcells:
+                time.sleep(5); s=0
+                for spos in subgrid:
                     if len(Ctargets) == 0: break
-                    if cell.parent(15).id() in Ctargets:
-                        log.info('Looking closer for %d pokes, subcell %d' % (len(Ptargets),s)); s += 1
 
-                        lat = CellId.to_lat_lng(cell).lat().degrees
-                        lng = CellId.to_lat_lng(cell).lng().degrees
+                    slat,slng = spos[0],spos[1]
+                    covers.append([spos[0],spos[1]])
+                    
+                    for Ctarget in Ctargets:
+                        if not circle_in_cell(CellId(Ctarget), slat, slng, 70, 16): continue
+                    
+                    cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
+                    s += 1
+                    log.info('Looking closer for %d pokes, step %d (max 18)' % (len(Ptargets),s))
 
-                        cell_ids = get_cell_ids(cover_circle(lat, lng, 75, 15))
+                    time.sleep(10)
+                    timestamps = [0,] * len(cell_ids)
+                    api.set_position(slat, slng, origin[2])
+                    response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                    if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                    if response_dict is None or len(response_dict) == 0: continue
 
-                        time.sleep(10)
-                        timestamps = [0,] * len(cell_ids)
-                        api.set_position(lat, lng, origin[2])
-                        response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                        if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                        if response_dict is None or len(response_dict) == 0: continue
+                    for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
+                        if 'catchable_pokemons' in map_cell:
+                            for poke in map_cell['catchable_pokemons']:
+                                if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
+                                    if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
+                                        Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
+                                    Pfound.append(poke['encounter_id'])
+                                    Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                                    log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
+                            del Ctargets[:]
+                            for Ptarget in Ptargets:
+                                if Ptarget[1] not in Ctargets:
+                                    Ctargets.append(Ptarget[1])
 
-                        for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
-                            if 'catchable_pokemons' in map_cell:
-                                for poke in map_cell['catchable_pokemons']:
-                                    if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
-                                        if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
-                                            Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                                        Pfound.append(poke['encounter_id'])
-                                        Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
-                                        log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
-                                del Ctargets[:]
-                                for Ptarget in Ptargets:
-                                    if Ptarget[1] not in Ctargets:
-                                        Ctargets.append(Ptarget[1])
-
-            covers.append([lat,lng])
             time.sleep(10)
 
     S.join(60)
