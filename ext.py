@@ -54,6 +54,20 @@ def get_cell_edges(cellid):
     
     return cell_edges
     
+def point_in_cell(cell,lat,lng):
+        ll = LatLng.from_degrees(lat, lng)
+        if CellId.from_lat_lng(ll).parent(cell.level()) == cell: return True
+        else: return False
+        
+def circle_in_cell(cell, lat, lng, radius, res=8):
+    g = Geodesic.WGS84  # @UndefinedVariable
+    
+    for i in xrange(res):
+        p = g.Direct(lat, lng, i * (360/res), radius)
+        if point_in_cell(cell, p['lat2'], p['lon2']): return True
+        
+    return False
+    
 def get_cell_ids(cells):
     cell_ids = sorted([x.id() for x in cells])
     return cell_ids
@@ -72,13 +86,13 @@ def cover_circle(lat, lng, radius, level=15):
 def getEarthRadius(latrad):
     return (1.0 / (((math.cos(latrad)) / 6378137.0) ** 2 + ((math.sin(latrad)) / 6356752.3) ** 2)) ** (1.0 / 2)
 
-def hex_spiral(lat_org, lng_org, layers, dist):
+def hex_spiral(lat_org, lng_org, dist, layers):
     latrad = lat_org * math.pi / 180
 
     x_un = 1.5 * dist / getEarthRadius(latrad) / math.cos(latrad) * 0.999 * 180 / math.pi # unity vector in x direction in degrees
     y_un = 1.0 * 3.0 ** 0.5 / 2.0 * dist / getEarthRadius(latrad) * 0.999 * 180 / math.pi # unity vector in y direction in degrees
     
-    grid = [LatLng.from_degrees(lat_org,lng_org)]
+    grid = [(lat_org,lng_org)]
 
     for a in range(1, layers+1):
         for s in range(0, 6): # 6 sides
@@ -102,7 +116,7 @@ def hex_spiral(lat_org, lng_org, layers, dist):
                     lat = lat_org - y_un * (a + i)
                     lng = lng_org - x_un * (a - i)
 
-                grid.append(LatLng.from_degrees(lat,lng))
+                grid.append((lat,lng))
     return grid
 
 def cell_spiral(lat, lng, dist, level=15, step=100, res=3.6):
