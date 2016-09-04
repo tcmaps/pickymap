@@ -25,7 +25,7 @@ def init_config():
     parser = argparse.ArgumentParser()
     config_file = "config.json"
 
-    load   = {}
+    load = {}
     if os.path.isfile(config_file):
         with open(config_file) as data:
             load.update(json.load(data))
@@ -86,7 +86,7 @@ def main():
     
     config = init_config()
     if not config:
-        return    
+        return
     
     global origin, Pactive, covers, pokes, icons
     Ptargets,Pfound,Pactive,covers = [],[],[],[]
@@ -98,101 +98,96 @@ def main():
     pokes = get_pokenames('pokes.txt')
     
     icons = []
-    for i in xrange(0,151):
+    for i in range(0,151):
         icons.append(folium.features.CustomIcon('./icons/%d.png' % i, icon_size=(32, 32)))
 
     origin = get_pos_by_name(config.location)
     S = Server(); S.setDaemon(daemonic=True); S.start() 
     
     log.info('Generating THE GRID...')
-    temp = cell_spiral(origin[0], origin[1], config.radius, 15)  
-    grid = [] 
-    for tmp in temp:
-        grid.append(get_cell_edges(tmp))
-    del tmp, temp
+    grid = hex_spiral(origin[0], origin[1], config.radius, 15)
     
     while True:
         
         m = 1
         covers = []
-        for g in grid:   
-            
-            pos = g[0]            
+        for pos in grid:
     
             lat = pos.lat().degrees
             lng = pos.lng().degrees
                     
             cell_ids = get_cell_ids(cover_circle(lat, lng, 210, 15))
 
-            log.info('Scan cell %d of %d' % (m,len(grid))); m+=1
+            log.info('Scan location %d of %d' % (m,len(grid))); m+=1
             timestamps = [0,] * len(cell_ids)
             api.set_position(lat, lng, origin[2])
             response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
             if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
             if response_dict is None or len(response_dict) == 0: continue
             
-            traverse = 0; Ctargets = []
+            Ctargets = []
             
-            for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:                        
-                
+            for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                 if 'catchable_pokemons' in map_cell:
                     for poke in map_cell['catchable_pokemons']:
                         if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
-                            if poke['encounter_id'] in Ptargets: Ptargets.remove(poke['encounter_id'])
+                            if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
+                                Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
                             Pfound.append(poke['encounter_id'])
                             Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
                             log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
-                
-                    if 'nearby_pokemons' in map_cell:
-                        for poke in map_cell['nearby_pokemons']:                      
-                            if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound and poke['encounter_id'] not in Ptargets:
-                                traverse = 1
-                                if map_cell['s2_cell_id'] not in Ctargets: Ctargets.append(map_cell['s2_cell_id'])
-                                Ptargets.append(poke['encounter_id'])
-                                log.info('{} nearby (locked on!)'.format(pokes[poke['pokemon_id']],map_cell['s2_cell_id']))
-                            elif poke['pokemon_id'] in ignore:
-                                    log.info('{} nearby (ignored)'.format(pokes[poke['pokemon_id']],map_cell['s2_cell_id']))
-                        
 
-            if traverse:
+            for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
+                if 'nearby_pokemons' in map_cell:
+                    for poke in map_cell['nearby_pokemons']:
+                        if poke['pokemon_id'] in ignore:
+                            log.info('{} nearby (ignored)'.format(pokes[poke['pokemon_id']], map_cell['s2_cell_id'])) # this will give you multiple messages for the same pokemon, should probably remove or use an ignore list
+                        elif poke['encounter_id'] not in Pfound and [poke['encounter_id'],map_cell['s2_cell_id']] not in Ptargets:
+                            Ptargets.append([poke['encounter_id'],map_cell['s2_cell_id']])
+                            log.info('{} nearby (locked on!)'.format(pokes[poke['pokemon_id']],map_cell['s2_cell_id']))
+                    del Ctargets[:]
+                    for Ptarget in Ptargets:
+                        if Ptarget[1] not in Ctargets:
+                            Ctargets.append(Ptarget[1])
+
+            if len(Ptargets) > 0:
                 
                 targetcells = cover_circle(lat, lng, 201.5, 17)
-                
-                Stargets = []
-                for tcell in targetcells:
-                    if tcell.parent(15).id() in Ctargets: Stargets.append(tcell)
-                
+
                 s = 1
-                for cell in Stargets:
-                    
-                    if len(Ptargets) < 1: break
-                    log.info('Looking closer for %d pokes, subcell %d of %d' % (len(Ptargets),s,len(Stargets))); s += 1
-                    
-                    lat = CellId.to_lat_lng(cell).lat().degrees
-                    lng = CellId.to_lat_lng(cell).lng().degrees
-                            
-                    cell_ids = get_cell_ids(cover_circle(lat, lng, 75, 15))
-                    
-                    time.sleep(10)
-                    timestamps = [0,] * len(cell_ids)
-                    api.set_position(lat, lng, origin[2])
-                    response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                    if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                    if response_dict is None or len(response_dict) == 0: continue
-                    
-                    for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:                               
-                        if 'catchable_pokemons' in map_cell:
-                            for poke in map_cell['catchable_pokemons']:
-                                if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
-                                    if poke['encounter_id'] in Ptargets: Ptargets.remove(poke['encounter_id'])
-                                    Pfound.append(poke['encounter_id'])
-                                    Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
-                                    log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
-                    
+                for cell in targetcells:
+                    if len(Ctargets) == 0: break
+                    if cell.parent(15).id() in Ctargets:
+                        log.info('Looking closer for %d pokes, subcell %d' % (len(Ptargets),s)); s += 1
+
+                        lat = CellId.to_lat_lng(cell).lat().degrees
+                        lng = CellId.to_lat_lng(cell).lng().degrees
+
+                        cell_ids = get_cell_ids(cover_circle(lat, lng, 75, 15))
+
+                        time.sleep(10)
+                        timestamps = [0,] * len(cell_ids)
+                        api.set_position(lat, lng, origin[2])
+                        response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                        if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=lat, longitude=lng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                        if response_dict is None or len(response_dict) == 0: continue
+
+                        for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
+                            if 'catchable_pokemons' in map_cell:
+                                for poke in map_cell['catchable_pokemons']:
+                                    if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
+                                        if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
+                                            Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
+                                        Pfound.append(poke['encounter_id'])
+                                        Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                                        log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
+                                del Ctargets[:]
+                                for Ptarget in Ptargets:
+                                    if Ptarget[1] not in Ctargets:
+                                        Ctargets.append(Ptarget[1])
 
             covers.append([lat,lng])
             time.sleep(10)
-
 
     S.join(60)
     log.info('Aborted or Logout.')

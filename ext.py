@@ -13,7 +13,6 @@ log = logging.getLogger(__name__)
 def get_pos_by_name(location_name):
     prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
     res = prog.match(location_name)
-    latitude, longitude, altitude = None, None, None
     if res:
         latitude, longitude, altitude = float(res.group(1)), float(res.group(2)), 0
     else:
@@ -50,7 +49,7 @@ def get_cell_edges(cellid):
     cell = Cell(cellid)
     cell_edges = []
     
-    for i in xrange(4):
+    for i in range(4):
         cell_edges.append(get_cell_edge(cell,i))
     
     return cell_edges
@@ -61,8 +60,8 @@ def get_cell_ids(cells):
 
 def cover_circle(lat, lng, radius, level=15):
     EARTH = 6371000
-    region = Cap.from_axis_angle(\
-             LatLng.from_degrees(lat, lng).to_point(), \
+    region = Cap.from_axis_angle(
+             LatLng.from_degrees(lat, lng).to_point(),
              Angle.from_degrees(360*radius/(2*math.pi*EARTH)))
     coverer = RegionCoverer()
     coverer.min_level = level
@@ -70,19 +69,59 @@ def cover_circle(lat, lng, radius, level=15):
     cells = coverer.get_covering(region)
     return cells
 
+def getEarthRadius(latrad):
+    return (1.0 / (((math.cos(latrad)) / 6378137.0) ** 2 + ((math.sin(latrad)) / 6356752.3) ** 2)) ** (1.0 / 2)
+
+def hex_spiral(lat_org, lng_org, dist, layers):
+    latrad = lat_org * math.pi / 180
+
+    x_un = 1.5 * dist / getEarthRadius(latrad) / math.cos(latrad) * 0.999 * 180 / math.pi # unity vector in x direction in degrees
+    y_un = 1.0 * 3.0 ** 0.5 / 2.0 * dist / getEarthRadius(latrad) * 0.999 * 180 / math.pi # unity vector in y direction in degrees
+    
+    grid = [LatLng.from_degrees(lat_org,lng_org)]
+
+    for a in range(1, layers+1):
+        for s in range(0, 6): # 6 sides
+            for i in range(0, a): #a tiles per side
+                if s == 0:
+                    lat = lat_org + y_un * (-2 * a + i)
+                    lng = lng_org + x_un * i
+                elif s == 1:
+                    lat = lat_org + y_un * (-a + 2 * i)
+                    lng = lng_org + x_un * a
+                elif s == 2:
+                    lat = lat_org + y_un * (a + i)
+                    lng = lng_org + x_un * (a - i)
+                elif s == 3:
+                    lat = lat_org - y_un * (-2 * a + i)
+                    lng = lng_org - x_un * i
+                elif s == 4:
+                    lat = lat_org - y_un * (-a + 2 * i)
+                    lng = lng_org - x_un * a
+                else:  # if s==5:
+                    lat = lat_org - y_un * (a + i)
+                    lng = lng_org - x_un * (a - i)
+
+                grid.append(LatLng.from_degrees(lat,lng))
+    return grid
+
 def cell_spiral(lat, lng, dist, level=15, step=100, res=3.6):
     cells = []
 
     g = Geodesic.WGS84  # @UndefinedVariable
     
-    for i in xrange(0,dist,step):
-        for rad in xrange(int(360/res)):
+    for i in range(0,dist,step):
+        for rad in range(int(360/res)):
             p = g.Direct(lat, lng, rad*res, i)
             c = CellId.from_lat_lng(LatLng.from_degrees(p['lat2'],p['lon2']))
             c = c.parent(level)
             if c not in cells: cells.append(c)
-    
-    return cells
+
+    grid = []
+    for cell in cells:
+        grid.extend(get_cell_edges(cell))
+
+    return grid
 
 class AccountBannedException(AuthException):
     pass
@@ -92,7 +131,7 @@ def api_init(account):
     
     try:
         api.set_position(360,360,0)  
-        api.set_authentication(provider = account.auth_service,\
+        api.set_authentication(provider = account.auth_service,
                                username = account.username, password =  account.password)
         api.activate_signature(get_encryption_lib_path()); time.sleep(1); api.get_player()
     
@@ -109,7 +148,7 @@ def api_init(account):
                 
                 elif response['status_code'] == 3:
                     # try to accept ToS
-                    time.sleep(5); response = api.mark_tutorial_complete(tutorials_completed = 0,\
+                    time.sleep(5); response = api.mark_tutorial_complete(tutorials_completed = 0,
                                     send_marketing_emails = False, send_push_notifications = False)                    
 
                     if response['status_code'] == 1 or response['status_code'] == 2:
@@ -118,7 +157,7 @@ def api_init(account):
                     
                     elif response['status_code'] == 3:
                         print('Account %s BANNED!' % account.username)
-                        raise AccountBannedException; return None
+                        raise AccountBannedException
                 
     return None
 
@@ -172,8 +211,6 @@ def get_encryption_lib_path():
     err = "Could not find [{}] encryption library '{}'".format(sys.platform, lib_name)
     log.error(err)
     raise Exception(err)
-
-    return None
 
 def get_pokenames(filename):
     plist = []

@@ -1,0 +1,7 @@
+{
+	"location": "LOCATION",
+	"radius": 15,
+	"auth_service": "ptc",
+	"username": "USER",
+	"password": "PASSWORD"
+}
