@@ -70,8 +70,8 @@ def serve_map():
         folium.CircleMarker(c, radius=200, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
     
     for p in Pactive:
-        if p[3] > 0: t = strftime('HH:%M:%S', time.gmtime(int(p[3]/1000)))
-        else: t = strftime('HH:%M:%S', time.gmtime((time.time()+900)))
+        if p[3] > 0: t = strftime('%H:%M:%S', time.localtime(int(p[3]/1000)))
+        else: t = strftime('%H:%M:%S', time.localtime((time.time()+900)))
         folium.Marker(p[1], popup='%s - %s' % (pokes[p[2]],t), icon=icons[p[2]]).add_to(pokemap)
     
     if os.path.isfile('map.html'): os.remove('map.html')
