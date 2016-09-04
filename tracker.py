@@ -34,7 +34,7 @@ def init_config():
     parser.add_argument("-u", "--username", help="Username")
     parser.add_argument("-p", "--password", help="Password")
     parser.add_argument("-l", "--location", help="Location")    
-    parser.add_argument("-r", "--radius", help="Scan radius", default=1000, type=int)
+    parser.add_argument("-r", "--layers", help="Hex layers", default=5, type=int)
     parser.add_argument("-d", "--debug", help="Debug Mode", action='store_true', default=0)    
     config = parser.parse_args()
 
@@ -105,7 +105,7 @@ def main():
     S = Server(); S.setDaemon(daemonic=True); S.start() 
     
     log.info('Generating THE GRID...')
-    grid = hex_spiral(origin[0], origin[1], config.radius, 200)
+    grid = hex_spiral(origin[0], origin[1], config.layers, 200)
     
     while True:
         

@@ -1,6 +1,6 @@
 {
 	"location": "LOCATION",
-	"radius": 15,
+	"layers": 5,
 	"auth_service": "ptc",
 	"username": "USER",
 	"password": "PASSWORD"
