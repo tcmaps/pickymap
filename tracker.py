@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-tileset = r'http://3.base.maps.cit.api.here.com/maptile/2.1/basetile/newest/normal.day/{z}/{x}/{y}/256/png8?app_id=xhiqkgRI46elZ6OnVfot&app_code=mY1vlkf4B0kQ8cE9V36qVA&lg=eng'
+tileset = r'http://3.base.maps.cit.api.here.com/maptile/2.1/maptile/newest/normal.day/{z}/{x}/{y}/256/png8?app_id=xhiqkgRI46elZ6OnVfot&app_code=mY1vlkf4B0kQ8cE9V36qVA&lg=eng'
 kudos='Map &copy; 1987-2014 <a href="http://developer.here.com">HERE</a>'
 
 """
