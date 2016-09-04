@@ -1,6 +1,6 @@
+bottle==0.12.9
 folium==0.2.1
 geographiclib==1.46.3
 geopy==1.11.0
 s2sphere==0.2.4
 -e git+git://github.com/pogodevorg/pgoapi#egg=pgoapi
-bottle
