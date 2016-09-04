@@ -1,0 +1,5 @@
+folium==0.2.1
+geographiclib==1.46.3
+geopy==1.11.0
+s2sphere==0.2.4
+pgoapi==1.1.6
