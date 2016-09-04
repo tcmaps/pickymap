@@ -74,6 +74,7 @@ def serve_map():
         else: t = strftime('HH:%M:%S', time.gmtime((time.time()+900)))
         folium.Marker(p[1], popup='%s - %s' % (pokes[p[2]],t), icon=icons[p[2]]).add_to(pokemap)
     
+    if os.path.isfile('map.html'): os.remove('map.html')
     pokemap.save('map.html'); del pokemap
     return static_file('map.html', root='.')
 
