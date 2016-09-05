@@ -67,7 +67,7 @@ def serve_map():
     pokemap = folium.Map(location=[origin[0],origin[1]],zoom_start=12,tiles=tileset,attr=kudos)
     
     for c in covers:
-        folium.CircleMarker(c, radius=70, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
+        pass #folium.CircleMarker(c, radius=70, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
     
     for p in Pactive:
         if p[3] > 0: t = strftime('%H:%M:%S', time.localtime(int(p[3]/1000)))
@@ -114,6 +114,8 @@ def main():
         for pos in grid:
     
             plat,plng = pos[0],pos[1]
+            
+            covers.append([plat,plng])
                     
             cell_ids = get_cell_ids(cover_circle(plat, plng, 210, 15))
 
@@ -167,14 +169,11 @@ def main():
                 for tmp in tempsubgrid:
                     subgrid.append(tmp[0])
 
-
-
                 s=0
                 for spos in subgrid:
                     if len(Ctargets) == 0: break
 
                     slat,slng = spos[0],spos[1]
-                    covers.append([spos[0],spos[1]])
                     
                     cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
                     s += 1
