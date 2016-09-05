@@ -153,16 +153,28 @@ def main():
                 
                 subgrid = hex_spiral(plat, plng, 70, 2)
                 subgrid.pop(0) # already scanned in main thread
+                
+                tempsubgrid = []
+                for tmp in subgrid:              
+                    q = 0
+                    for Ctarget in Ctargets:
+                        q += circle_in_cell(CellId(Ctarget), tmp[0], tmp[1], 70, 12)    
+                    tempsubgrid.append([tmp,q])
+                
+                tempsubgrid.sort(key=lambda q:q[1], reverse=True)
+                
+                subgrid = []
+                for tmp in tempsubgrid:
+                    subgrid.append(tmp[0])
 
-                time.sleep(5); s=0
+
+
+                s=0
                 for spos in subgrid:
                     if len(Ctargets) == 0: break
 
                     slat,slng = spos[0],spos[1]
                     covers.append([spos[0],spos[1]])
-                    
-                    for Ctarget in Ctargets:
-                        if not circle_in_cell(CellId(Ctarget), slat, slng, 70, 16): continue
                     
                     cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
                     s += 1

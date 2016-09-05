@@ -62,11 +62,12 @@ def point_in_cell(cell,lat,lng):
 def circle_in_cell(cell, lat, lng, radius, res=8):
     g = Geodesic.WGS84  # @UndefinedVariable
     
+    q = 0
     for i in xrange(res):
         p = g.Direct(lat, lng, i * (360/res), radius)
-        if point_in_cell(cell, p['lat2'], p['lon2']): return True
+        if point_in_cell(cell, p['lat2'], p['lon2']): q += 1
         
-    return False
+    return float(float(q)/float(res))
     
 def get_cell_ids(cells):
     cell_ids = sorted([x.id() for x in cells])
