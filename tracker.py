@@ -161,7 +161,7 @@ def main():
                     q = 0
                     for Ctarget in Ctargets:
                         q += circle_in_cell(CellId(Ctarget), tmp[0], tmp[1], 70, 12)    
-                    tempsubgrid.append([tmp,q])
+                    if q > 0: tempsubgrid.append([tmp,q])
                 
                 tempsubgrid.sort(key=lambda q:q[1], reverse=True)
                 
@@ -177,7 +177,7 @@ def main():
                     
                     cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
                     s += 1
-                    log.info('Looking closer for %d pokes, step %d (max 18)' % (len(Ptargets),s))
+                    log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
 
                     time.sleep(10)
                     timestamps = [0,] * len(cell_ids)
