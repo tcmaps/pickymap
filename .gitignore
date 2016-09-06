@@ -1,0 +1,7 @@
+*.pyc
+*.bat
+*.sh
+src/
+icons/
+ignore.txt
+config.json
