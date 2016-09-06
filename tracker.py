@@ -14,6 +14,7 @@ import json, argparse
 
 from bottle import route, run, static_file
 from time import strftime, localtime, sleep
+from datetime import datetime, timedelta
 from threading import Thread
 
 from ext import *
@@ -35,6 +36,7 @@ def init_config():
     parser.add_argument("-p", "--password", help="Password")
     parser.add_argument("-l", "--location", help="Location")    
     parser.add_argument("-r", "--layers", help="Hex layers", default=5, type=int)
+    parser.add_argument("-t", "--rhtime", help="max cycle time (minutes)", default=15, type=int)
     parser.add_argument("-d", "--debug", help="Debug Mode", action='store_true', default=0)    
     config = parser.parse_args()
 
@@ -111,8 +113,12 @@ def main():
         
         m = 1
         covers = []
+        returntime = datetime.now() + timedelta(minutes=config.rhtime)
+        
         for pos in grid:
-    
+            
+            if datetime.now() > returntime: break
+                        
             plat,plng = pos[0],pos[1]
             
             covers.append([plat,plng])
