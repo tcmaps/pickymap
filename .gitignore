@@ -6,4 +6,5 @@ icons/
 ignore.txt
 config.json
 *.dll
+*.so
 map.html
