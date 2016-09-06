@@ -139,7 +139,7 @@ def main():
                             Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
                             log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
                             tweet = '{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude'])
-                            status = tapi.update_status(status=tweet)
+                            status = tapi.update_status(status=tweet, lat=poke['latitude'],long=poke['longitude'])
 
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                 if 'nearby_pokemons' in map_cell:
@@ -164,7 +164,7 @@ def main():
                     q = 0
                     for Ctarget in Ctargets:
                         q += circle_in_cell(CellId(Ctarget), tmp[0], tmp[1], 70, 12)    
-                    tempsubgrid.append([tmp,q])
+                    if q > 0: tempsubgrid.append([tmp,q])
                 
                 tempsubgrid.sort(key=lambda q:q[1], reverse=True)
                 
@@ -181,7 +181,7 @@ def main():
                     
                     cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
                     s += 1
-                    log.info('Looking closer for %d pokes, step %d (max 18)' % (len(Ptargets),s))
+                    log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
 
                     time.sleep(10)
                     timestamps = [0,] * len(cell_ids)
@@ -200,7 +200,7 @@ def main():
                                     Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
                                     log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
                                     tweet = '{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude'])
-                                    status = tapi.update_status(status=tweet)
+                                    status = tapi.update_status(status=tweet, lat=poke['latitude'],long=poke['longitude'])
                             del Ctargets[:]
                             for Ptarget in Ptargets:
                                 if Ptarget[1] not in Ctargets:
