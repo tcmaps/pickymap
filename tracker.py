@@ -1,7 +1,4 @@
 #!/usr/bin/env python
-tileset = r'http://3.base.maps.cit.api.here.com/maptile/2.1/maptile/newest/normal.day/{z}/{x}/{y}/256/png8?app_id=xhiqkgRI46elZ6OnVfot&app_code=mY1vlkf4B0kQ8cE9V36qVA&lg=eng'
-kudos='Map &copy; 1987-2014 <a href="http://developer.here.com">HERE</a>'
-
 """
 based on: pgoapi - Pokemon Go API
 Copyright (c) 2016 tjado <https://github.com/tejado>
@@ -10,7 +7,6 @@ Author: TC    <reddit.com/u/Tr4sHCr4fT>
 Version: 0.0.1-pre_alpha
 """
 import tweepy
-import folium
 import json, argparse
 
 from time import strftime, localtime, sleep
@@ -68,8 +64,7 @@ def main():
     
     tapi = twit_init()
     lastscan = datetime.now()
-    
-    global origin, Pactive, covers, pokes, icons
+
     Ptargets,Pfound,Pactive,covers = [],[],[],[]
     
     log.info("Log'in...")
@@ -77,10 +72,6 @@ def main():
 
     watch =  get_pokelist('watch.txt')
     pokes = get_pokenames('pokes.txt')
-
-    log.info("Loading icons..."); icons = [] 
-    for i in xrange(0,151):
-        icons.append(folium.features.CustomIcon('./icons/%d.png' % i))
     
     geolocator = GoogleV3()
     prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
@@ -134,8 +125,7 @@ def main():
                         if poke['pokemon_id'] in watch and poke['encounter_id'] not in Pfound:
                             if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
                                 Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                            Pfound.append(poke['encounter_id'])
-                            Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                            Pfound.append(poke['encounter_id']); Pactive.append(poke)
                             log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
 
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
@@ -194,8 +184,7 @@ def main():
                                 if poke['pokemon_id'] in watch and poke['encounter_id'] not in Pfound:
                                     if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
                                         Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                                    Pfound.append(poke['encounter_id'])
-                                    Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                                    Pfound.append(poke['encounter_id']); Pactive.append(poke)
                                     log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
                             del Ctargets[:]
                             for Ptarget in Ptargets:
@@ -206,18 +195,17 @@ def main():
 # Tweeter
             for p in Pactive:
                 
-                tloc = str(geolocator.reverse("%f, %f" % (p['latitude'],p['longitude'])))
-                tloc = str(tloc.adress); tloc = tloc.strip().split(',')
+                tmploc = geolocator.reverse((p['latitude'], p['longitude']),exactly_one=True)
+                loc = tmploc.address.strip().split(',')
                 
-                if p[3] > 0:
-                    t = strftime('%H:%M:%S', time.localtime(int(p[3]/1000)))
-                    tweet = '%s near %s,%s until %s!' %  (pokes[p['pokemon_id']],tloc[0],tloc[1],t)
+                if p['expiration_timestamp_ms'] > 0:
+                    t = strftime('%H:%M:%S', time.localtime(int(p['expiration_timestamp_ms']/1000)))
+                    tweet = '%s near %s until %s!' %  (pokes[p['pokemon_id']],loc[0],t)
                 else:
                     t = strftime('%H:%M:%S', time.localtime((time.time()+900)))
-                    tweet = '%s near %s,%s until at least %s!' %  (pokes[p['pokemon_id']],tloc[0],tloc[1],t)
+                    tweet = '%s near %s until at least %s!' %  (pokes[p['pokemon_id']],loc[0],t)
 
-                status = tapi.update_status(status=tweet, lat=p['latitude'],long=p['longitude'])
-                
+                status = tapi.update_status(status=tweet, lat=p['latitude'], long=p['longitude'])
 ###
         log.info('Back to Start.')
 
