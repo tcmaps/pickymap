@@ -10,23 +10,6 @@ from pgoapi.pgoapi import PGoApi
 log = logging.getLogger(__name__)
 
 
-def get_pos_by_name(location_name):
-    prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
-    res = prog.match(location_name)
-    if res:
-        latitude, longitude, altitude = float(res.group(1)), float(res.group(2)), 0
-    else:
-        geolocator = GoogleV3()
-        loc = geolocator.geocode(location_name, timeout=10)
-        if loc:
-            log.info("Location for '%s' found: %s", location_name, loc.address)
-            log.info('Coordinates (lat/long/alt) for location: %s %s %s', loc.latitude, loc.longitude, loc.altitude)
-            latitude, longitude, altitude = loc.latitude, loc.longitude, loc.altitude
-        else:
-            return None
-
-    return (latitude, longitude, altitude)
-
 def sub_cell(cell,i=0,dist=25):
     
     g = Geodesic.WGS84  # @UndefinedVariable
@@ -234,7 +217,7 @@ def get_pokenames(filename):
         plist.append(l.strip())
     return plist
     
-def get_watchlist(filename):
+def get_pokelist(filename):
     wlist = []
     f = open(filename,'r')
     for l in f.readlines():
