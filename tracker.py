@@ -123,7 +123,8 @@ def main():
             log.info('Scan location %d of %d' % (m,len(grid))); m+=1
             timestamps = [0,] * len(cell_ids)
             api.set_position(plat, plng, origin[2])
-            response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+            try: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+            except NotLoggedInException: del api; api = api_init(config); continue
             if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
             if response_dict is None or len(response_dict) == 0: continue
             
@@ -186,7 +187,8 @@ def main():
                     time.sleep(10)
                     timestamps = [0,] * len(cell_ids)
                     api.set_position(slat, slng, origin[2])
-                    response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                    try: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                    except NotLoggedInException: del api; api = api_init(config); continue
                     if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
                     if response_dict is None or len(response_dict) == 0: continue
 
@@ -222,6 +224,7 @@ def twit_init():
     }
     
     auth = tweepy.OAuthHandler(cfg['consumer_key'], cfg['consumer_secret'])
+from pgoapi.exceptions import NotLoggedInException
     auth.set_access_token(cfg['access_token'], cfg['access_token_secret'])
     return tweepy.API(auth)
   
