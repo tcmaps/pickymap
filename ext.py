@@ -234,7 +234,7 @@ def get_pokenames(filename):
         plist.append(l.strip())
     return plist
     
-def get_ignorelist(filename):
+def get_pokelist(filename):
     wlist = []
     f = open(filename,'r')
     for l in f.readlines():

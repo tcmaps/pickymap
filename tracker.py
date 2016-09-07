@@ -1,7 +1,4 @@
 #!/usr/bin/env python
-tileset = r'http://3.base.maps.cit.api.here.com/maptile/2.1/maptile/newest/normal.day/{z}/{x}/{y}/256/png8?app_id=xhiqkgRI46elZ6OnVfot&app_code=mY1vlkf4B0kQ8cE9V36qVA&lg=eng'
-kudos='Map &copy; 1987-2014 <a href="http://developer.here.com">HERE</a>'
-
 """
 based on: pgoapi - Pokemon Go API
 Copyright (c) 2016 tjado <https://github.com/tejado>
@@ -9,15 +6,14 @@ Copyright (c) 2016 tjado <https://github.com/tejado>
 Author: TC    <reddit.com/u/Tr4sHCr4fT>
 Version: 0.0.1-pre_alpha
 """
-import folium
-import json, argparse
-
-from bottle import route, run, static_file
-from time import strftime, localtime, sleep
+import os, re, json, argparse, logging, requests
 from datetime import datetime, timedelta
-from threading import Thread
+from geopy.geocoders import GoogleV3
+from s2sphere import CellId
+from time import sleep
 
-from ext import *
+from pgoapi.exceptions import NotLoggedInException
+from ext import api_init, get_pokelist, get_pokenames, hex_spiral, get_cell_ids, cover_circle, circle_in_cell
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +30,8 @@ def init_config():
     parser.add_argument("-a", "--auth_service", help="Auth Service ('ptc' or 'google')", default="ptc")
     parser.add_argument("-u", "--username", help="Username")
     parser.add_argument("-p", "--password", help="Password")
-    parser.add_argument("-l", "--location", help="Location")    
+    parser.add_argument("-l", "--location", help="Location")
+    parser.add_argument("--wh", help="Webhook host:port", default="localhost:4000")       
     parser.add_argument("-r", "--layers", help="Hex layers", default=5, type=int)
     parser.add_argument("-t", "--rhtime", help="max cycle time (minutes)", default=15, type=int)
     parser.add_argument("-d", "--debug", help="Debug Mode", action='store_true', default=0)    
@@ -59,60 +56,39 @@ def init_config():
 
     return config
 
-class Server(Thread):
-    def run(self):
-        run(host='localhost', port=5050, debug=False)
-@route('/')
-def serve_map():
-    global origin, Pactive, covers, pokes, icons
-    
-    pokemap = folium.Map(location=[origin[0],origin[1]],zoom_start=12,tiles=tileset,attr=kudos)
-    
-    for c in covers:
-        pass #folium.CircleMarker(c, radius=70, fill_color='#ffffff', fill_opacity=0).add_to(pokemap)
-    
-    for p in Pactive:
-        if p[3] > 0: t = strftime('%H:%M:%S', time.localtime(int(p[3]/1000)))
-        else: t = strftime('%H:%M:%S', time.localtime((time.time()+900)))
-        folium.Marker(p[1], popup='%s - %s' % (pokes[p[2]],t), icon=icons[p[2]]).add_to(pokemap)
-    
-    if os.path.isfile('map.html'): os.remove('map.html')
-    pokemap.save('map.html'); del pokemap
-    return static_file('map.html', root='.')
-
-@route('/icons/<filename>')
-def serve_icon(filename):
-    return static_file(filename, root='./icons/')
-
 def main():
     
     config = init_config()
     if not config:
         return
     
-    global origin, Pactive, covers, pokes, icons
-    Ptargets,Pfound,Pactive,covers = [],[],[],[]
+    Ptargets,Pfound,Pactive = [],[],[]
+    lastscan = datetime.now()
     
     log.info("Log'in...")
     api = api_init(config)
 
-    ignore = get_ignorelist('ignore.txt')
+    ignore = get_pokelist('ignore.txt')
     pokes = get_pokenames('pokes.txt')
     
-    log.info("Loading icons..."); icons = [] 
-    for i in xrange(0,151):
-        icons.append(folium.features.CustomIcon('./icons/%d.png' % i))
+    geolocator = GoogleV3()
+    prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
+    res = prog.match(config.location)
+    if res: olat, olng, alt = float(res.group(1)), float(res.group(2)), 0
+    else:
+        loc = geolocator.geocode(config.location, timeout=10)
+        if loc:
+            log.info("Location for '%s' found: %s", config.location, loc.address)
+            log.info('Coordinates (lat/long/alt) for location: %s %s %s', loc.latitude, loc.longitude, loc.altitude)
+            olat, olng, alt = loc.latitude, loc.longitude, loc.altitude; del loc
+        else: return
 
-    origin = get_pos_by_name(config.location)
-    S = Server(); S.setDaemon(daemonic=True); S.start() 
-    
     log.info('Generating Hexgrid...')
-    grid = hex_spiral(origin[0], origin[1], 200, config.layers)
+    grid = hex_spiral(olat, olng, 200, config.layers)
     
     while True:
         
         m = 1
-        covers = []
         returntime = datetime.now() + timedelta(minutes=config.rhtime)
         
         for pos in grid:
@@ -120,28 +96,27 @@ def main():
             if datetime.now() > returntime: break
                         
             plat,plng = pos[0],pos[1]
-            
-            covers.append([plat,plng])
-                    
             cell_ids = get_cell_ids(cover_circle(plat, plng, 210, 15))
 
+            while datetime.now() < (lastscan + timedelta(seconds=10)): sleep(0.5)
+            
             log.info('Scan location %d of %d' % (m,len(grid))); m+=1
-            timestamps = [0,] * len(cell_ids)
-            api.set_position(plat, plng, origin[2])
-            response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-            if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-            if response_dict is None or len(response_dict) == 0: continue
-            
+            response_dict = None
+            while response_dict is None:
+                timestamps = [0,] * len(cell_ids)
+                api.set_position(plat, plng, alt)
+                try: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                except NotLoggedInException: api = None; api = api_init(config); sleep(10)
+            lastscan = datetime.now()
+
             Ctargets = []
-            
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                 if 'catchable_pokemons' in map_cell:
                     for poke in map_cell['catchable_pokemons']:
                         if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
                             if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
                                 Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                            Pfound.append(poke['encounter_id'])
-                            Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                            Pfound.append(poke['encounter_id']); Pactive.append(poke)
                             log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
 
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
@@ -185,12 +160,13 @@ def main():
                     s += 1
                     log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
 
-                    time.sleep(10)
-                    timestamps = [0,] * len(cell_ids)
-                    api.set_position(slat, slng, origin[2])
-                    response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                    if response_dict is None or len(response_dict) == 0: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                    if response_dict is None or len(response_dict) == 0: continue
+                    response_dict = None
+                    while response_dict is None:
+                        sleep(10)
+                        timestamps = [0,] * len(cell_ids)
+                        api.set_position(slat, slng, alt)
+                        try: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                        except NotLoggedInException: api = None; api = api_init(config)
 
                     for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                         if 'catchable_pokemons' in map_cell:
@@ -198,18 +174,23 @@ def main():
                                 if poke['pokemon_id'] not in ignore and poke['encounter_id'] not in Pfound:
                                     if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
                                         Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                                    Pfound.append(poke['encounter_id'])
-                                    Pactive.append((poke['encounter_id'],[poke['latitude'],poke['longitude']],poke['pokemon_id'],poke['expiration_timestamp_ms']))
+                                    Pfound.append(poke['encounter_id']); Pactive.append(poke)
                                     log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
                             del Ctargets[:]
                             for Ptarget in Ptargets:
                                 if Ptarget[1] not in Ctargets:
                                     Ctargets.append(Ptarget[1])
 
-            time.sleep(10)
-
-    S.join(60)
-    log.info('Aborted or Logout.')
+            for p in Pactive:
+                p['spawnpoint_id'] = p['spawn_point_id']; del p['spawn_point_id']
+                p['disappear_time'] = (p['expiration_timestamp_ms']/1000); del p['expiration_timestamp_ms']
+                d = {"type": "pokemon", "message": p }
+                r = requests.post('http://%s/' % config.wh, json=d)
+            Pactive = []
+            
+        log.info('Back to Start.')
+        
+    log.info('Aborted or Crashed.')
 
 if __name__ == '__main__':
     main()
