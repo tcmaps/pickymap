@@ -6,13 +6,14 @@ Copyright (c) 2016 tjado <https://github.com/tejado>
 Author: TC    <reddit.com/u/Tr4sHCr4fT>
 Version: 0.0.1-pre_alpha
 """
-import os, re, json, argparse, logging, requests
+import os, re, json, argparse, logging, requests, signal
 from datetime import datetime, timedelta
-from geopy.geocoders import GoogleV3
-from s2sphere import CellId
-from time import sleep
-from random import randint
 from threading import Thread
+from random import randint
+from time import sleep
+
+from s2sphere import CellId
+from geopy.geocoders import GoogleV3
 
 from pgoapi.exceptions import NotLoggedInException, AuthException
 from core import api_init, get_pokelist, get_pokenames, hex_spiral, get_cell_ids, cover_circle, circle_in_cell, track
@@ -64,6 +65,10 @@ def init_config():
 
     return config
 
+class SignalHandler:
+    def __call__(self):
+        global killswitch
+        killswitch = True
 
 class TheSeeker(Thread):
     
@@ -154,7 +159,7 @@ class TheFinder(Thread):
         
         global killswitch
         global Pfound, Pcache, Pque
-                    
+                
         if config.mode == 'blacklist':
             plist = get_pokelist('ignore.txt')
         elif config.mode == 'whitelist':
@@ -235,14 +240,16 @@ class TheFinder(Thread):
                 
                 Pque.pop(0)
 #
-    
+
 def main():
     global config
+    
+    signal.signal(signal.SIGINT, handler)
     
     config = init_config()
     if not config:
         return
-
+    
     geolocator = GoogleV3()
     prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
     res = prog.match(config.location)
@@ -268,24 +275,25 @@ def main():
     
     S = TheSeeker(); F = TheFinder()
     S.start();  sleep(3);  F.start()
-
-    try:
-        while True:
-            if len(Pcache) > 0:
-                Psend = Pcache; Pcache = []
-                for p in Psend:
-                    p['spawnpoint_id'] = p['spawn_point_id']; del p['spawn_point_id']
-                    p['disappear_time'] = (p['expiration_timestamp_ms']/1000); del p['expiration_timestamp_ms']
-                    d = {"type": "pokemon", "message": p }
-                    try: requests.post('http://%s/' % config.wh, json=d)
-                    except Exception as e: log.error(e); continue
-            sleep(5)
-    except KeyboardInterrupt: log.info('Aborting...')
     
-    killswitch = True
+    while not killswitch:
+        if len(Pcache) > 0:
+            Psend = Pcache; Pcache = []
+            for p in Psend:
+                p['spawnpoint_id'] = p['spawn_point_id']; del p['spawn_point_id']
+                p['disappear_time'] = (p['expiration_timestamp_ms']/1000); del p['expiration_timestamp_ms']
+                d = {"type": "pokemon", "message": p }
+                try: requests.post('http://%s/' % config.wh, json=d)
+                except Exception as e: log.error(e); continue
+        sleep(5)
+    
     S.join(60); F.join(60)
     
     log.info('Aborted or Crashed.')
+
+def handler(signal, frame):
+    global killswitch
+    killswitch = True
 
 if __name__ == '__main__':
     main()
