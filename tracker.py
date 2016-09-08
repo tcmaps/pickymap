@@ -7,14 +7,15 @@ Author: TC    <reddit.com/u/Tr4sHCr4fT>
 Version: 0.0.1-pre_alpha
 """
 import tweepy
-import json, argparse
+import os, re, json, time, argparse, logging
 
 from time import strftime, localtime, sleep
 from datetime import datetime, timedelta
-from threading import Thread
+from geopy.geocoders import GoogleV3
+from s2sphere import CellId
 
-from ext import *
-from pgoapi.exceptions import NotLoggedInException
+from pgoapi.exceptions import NotLoggedInException, AuthException
+from ext import api_init, get_pokelist, get_pokenames, hex_spiral, get_cell_ids, cover_circle, circle_in_cell
 
 log = logging.getLogger(__name__)
 
@@ -58,14 +59,14 @@ def init_config():
 
 def main():
     
+    lastscan = datetime.now()
+    
     config = init_config()
     if not config:
         return
     
     tapi = twit_init()
     lastscan = datetime.now()
-
-    Ptargets,Pfound,Pactive,covers = [],[],[],[]
     
     log.info("Log'in...")
     api = api_init(config)
@@ -90,6 +91,7 @@ def main():
 
     log.info('Generating Hexgrid...')
     grid = hex_spiral(olat, olng, 200, config.layers)
+    Ptargets,Pfound,Pactive = [],[],[]
     
     while True:
         
@@ -114,10 +116,9 @@ def main():
                 timestamps = [0,] * len(cell_ids)
                 api.set_position(plat, plng, alt)
                 try: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                except NotLoggedInException: api = None; api = api_init(config); time.sleep(10)
-                
-            lastscan = datetime.now()
-
+                except NotLoggedInException, AuthException: api = None; api = api_init(config)
+                finally: lastscan = datetime.now()
+# coarse  
             Ctargets = []
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                 if 'catchable_pokemons' in map_cell:
@@ -141,56 +142,63 @@ def main():
                         if Ptarget[1] not in Ctargets:
                             Ctargets.append(Ptarget[1])
 
+# fine
             if len(Ptargets) > 0:
-                
-                subgrid = hex_spiral(plat, plng, 70, 2)
-                subgrid.pop(0) # already scanned in main thread
-                
-                tempsubgrid = []
-                for tmp in subgrid:              
-                    q = 0
-                    for Ctarget in Ctargets:
-                        q += circle_in_cell(CellId(Ctarget), tmp[0], tmp[1], 70, 12)    
-                    if q > 0: tempsubgrid.append([tmp,q])
-                
-                tempsubgrid.sort(key=lambda q:q[1], reverse=True)
-                
-                subgrid = []
-                for tmp in tempsubgrid:
-                    subgrid.append(tmp[0])
+                initsubgrid = hex_spiral(plat, plng, 70, 2)
+                initsubgrid.pop(0) # already scanned in main thread
 
-                s=0
-                for spos in subgrid:
-                    if len(Ctargets) == 0: break
-
-                    slat,slng = spos[0],spos[1]
-                    covers.append([spos[0],spos[1]])
+                s=1
+                Sdone = []
+                while len(Ctargets) > 0 and len(Ptargets) > 0:                    
+                        
+                    tempsubgrid = []
+                    for tmp in initsubgrid:              
+                        q = 0
+                        for Ctarget in Ctargets:
+                            q += circle_in_cell(CellId(Ctarget), tmp[0], tmp[1], 70, 12)    
+                        if q > 0: tempsubgrid.append([tmp,q])
                     
-                    cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
-                    s += 1
-                    log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
+                    tempsubgrid.sort(key=lambda q:q[1], reverse=True)
+                    
+                    subgrid = []
+                    for tmp in tempsubgrid:
+                        subgrid.append(tmp[0])
 
-                    response_dict = None
-                    while response_dict is None:
-                        time.sleep(10)
-                        timestamps = [0,] * len(cell_ids)
-                        api.set_position(slat, slng, alt)
-                        try: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                        except NotLoggedInException: api = None; api = api_init(config)
-
-                    for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
-                        if 'catchable_pokemons' in map_cell:
-                            for poke in map_cell['catchable_pokemons']:
-                                if poke['pokemon_id'] in watch and poke['encounter_id'] not in Pfound:
-                                    if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
-                                        Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
-                                    Pfound.append(poke['encounter_id']); Pactive.append(poke)
-                                    log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
-                            del Ctargets[:]
-                            for Ptarget in Ptargets:
-                                if Ptarget[1] not in Ctargets:
-                                    Ctargets.append(Ptarget[1])
-
+                    for spos in subgrid:
+                        if spos in Sdone: continue
+    
+                        slat,slng = spos[0],spos[1]
+                        cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
+                        
+                        while datetime.now() < (lastscan + timedelta(seconds=10)): sleep(0.5)
+                        
+                        log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
+    
+                        response_dict = None
+                        while response_dict is None:
+                            timestamps = [0,] * len(cell_ids)
+                            api.set_position(slat, slng, alt)
+                            try: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
+                            except NotLoggedInException, AuthException: api = None; api = api_init(config)
+                            finally: lastscan = datetime.now()
+    
+                        for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
+                            if 'catchable_pokemons' in map_cell:
+                                for poke in map_cell['catchable_pokemons']:
+                                    if poke['pokemon_id'] in watch and poke['encounter_id'] not in Pfound:
+                                        if [poke['encounter_id'],map_cell['s2_cell_id']] in Ptargets:
+                                            Ptargets.remove([poke['encounter_id'],map_cell['s2_cell_id']])
+                                        Pfound.append(poke['encounter_id']); Pactive.append(poke)
+                                        log.info('{} at {}, {}!'.format(pokes[poke['pokemon_id']],poke['latitude'],poke['longitude']))
+                                del Ctargets[:]
+                                for Ptarget in Ptargets:
+                                    if Ptarget[1] not in Ctargets:
+                                        Ctargets.append(Ptarget[1])
+                        
+                        Sdone.append(spos)
+                        s += 1
+                        break
+#
 
 # Tweeter
             for p in Pactive:
