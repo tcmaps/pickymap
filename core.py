@@ -1,59 +1,14 @@
-import re, os, sys, platform, time, math, logging
+import os, sys, platform, time, math, logging
 
-from geopy.geocoders import GoogleV3
 from geographiclib.geodesic import Geodesic
-from s2sphere import Cell, CellId, Angle, LatLng, Cap, RegionCoverer
+from s2sphere import CellId, Angle, LatLng, Cap, RegionCoverer
 
 from pgoapi.exceptions import AuthException
 from pgoapi.pgoapi import PGoApi
 
+
 log = logging.getLogger(__name__)
 
-
-def get_pos_by_name(location_name):
-    prog = re.compile("^(\-?\d+\.\d+)?,\s*(\-?\d+\.\d+?)$")
-    res = prog.match(location_name)
-    if res:
-        latitude, longitude, altitude = float(res.group(1)), float(res.group(2)), 0
-    else:
-        geolocator = GoogleV3()
-        loc = geolocator.geocode(location_name, timeout=10)
-        if loc:
-            log.info("Location for '%s' found: %s", location_name, loc.address)
-            log.info('Coordinates (lat/long/alt) for location: %s %s %s', loc.latitude, loc.longitude, loc.altitude)
-            latitude, longitude, altitude = loc.latitude, loc.longitude, loc.altitude
-        else:
-            return None
-
-    return (latitude, longitude, altitude)
-
-def sub_cell(cell,i=0,dist=25):
-    
-    g = Geodesic.WGS84  # @UndefinedVariable
-    olat = CellId.to_lat_lng(cell).lat().degrees
-    olng = CellId.to_lat_lng(cell).lng().degrees
-
-    p = g.Direct(olat, olng,(45+(90*i)),dist)
-    c = CellId.from_lat_lng(LatLng.from_degrees(p['lat2'],p['lon2']))
-    
-    return c.parent(cell.level()+1)
-
-def get_cell_edge(cell, edge=0):
-    
-    cell_edge = LatLng.from_point(cell.get_vertex(edge))
-    
-    return cell_edge
-
-def get_cell_edges(cellid):
-    
-    cell = Cell(cellid)
-    cell_edges = []
-    
-    for i in range(4):
-        cell_edges.append(get_cell_edge(cell,i))
-    
-    return cell_edges
-    
 def point_in_cell(cell,lat,lng):
         ll = LatLng.from_degrees(lat, lng)
         if CellId.from_lat_lng(ll).parent(cell.level()) == cell: return True
@@ -118,24 +73,6 @@ def hex_spiral(lat_org, lng_org, dist, layers):
                     lng = lng_org - x_un * (a - i)
 
                 grid.append((lat,lng))
-    return grid
-
-def cell_spiral(lat, lng, dist, level=15, step=100, res=3.6):
-    cells = []
-
-    g = Geodesic.WGS84  # @UndefinedVariable
-    
-    for i in range(0,dist,step):
-        for rad in range(int(360/res)):
-            p = g.Direct(lat, lng, rad*res, i)
-            c = CellId.from_lat_lng(LatLng.from_degrees(p['lat2'],p['lon2']))
-            c = c.parent(level)
-            if c not in cells: cells.append(c)
-
-    grid = []
-    for cell in cells:
-        grid.extend(get_cell_edges(cell))
-
     return grid
 
 class AccountBannedException(AuthException):
@@ -240,3 +177,16 @@ def get_pokelist(filename):
     for l in f.readlines():
         wlist.append(int(l.strip()))
     return wlist
+
+def track(Pid, Plist, mode):
+    if mode == 'whitelist' and Pid in Plist: return True
+    if mode == 'whitelist' and Pid not in Plist: return False
+    if mode == 'blacklist' and Pid in Plist: return False
+    if mode == 'blacklist' and Pid not in Plist: return True
+    return None
+
+class Poison(object):
+        def __init__(self, relay=False, cascade=False):
+            self.cascade = cascade
+            self.relay = relay
+            pass

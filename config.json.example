@@ -2,6 +2,8 @@
 	"location": "LOCATION",
 	"layers": 5,
 	"auth_service": "ptc",
-	"username": "USER",
-	"password": "PASSWORD"
+	"username1": "ACCOUNT1",
+	"password1": "PASSWORD1"
+	"username2": "ACCOUNT2",
+	"password2": "PASSWORD2"
 }
