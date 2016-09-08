@@ -12,7 +12,7 @@ from geopy.geocoders import GoogleV3
 from s2sphere import CellId
 from time import sleep
 
-from pgoapi.exceptions import NotLoggedInException
+from pgoapi.exceptions import NotLoggedInException, AuthException
 from ext import api_init, get_pokelist, get_pokenames, hex_spiral, get_cell_ids, cover_circle, circle_in_cell
 
 log = logging.getLogger(__name__)
@@ -58,12 +58,11 @@ def init_config():
 
 def main():
     
+    lastscan = datetime.now()
+    
     config = init_config()
     if not config:
         return
-    
-    Ptargets,Pfound,Pactive = [],[],[]
-    lastscan = datetime.now()
     
     log.info("Log'in...")
     api = api_init(config)
@@ -86,6 +85,7 @@ def main():
     log.info('Generating Hexgrid...')
     grid = hex_spiral(olat, olng, 200, config.layers)
     
+    Ptargets,Pfound,Pactive = [],[],[]
     while True:
         
         m = 1
@@ -106,8 +106,8 @@ def main():
                 timestamps = [0,] * len(cell_ids)
                 api.set_position(plat, plng, alt)
                 try: response_dict = api.get_map_objects(latitude=plat, longitude=plng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                except NotLoggedInException: api = None; api = api_init(config); sleep(10)
-            lastscan = datetime.now()
+                except NotLoggedInException, AuthException: api = None; api = api_init(config)
+                finally: lastscan = datetime.now()
 # coarse  
             Ctargets = []
             for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
@@ -158,17 +158,19 @@ def main():
                         if spos in Sdone: continue
     
                         slat,slng = spos[0],spos[1]
-                        
                         cell_ids = get_cell_ids(cover_circle(slat, slng, 75, 15))
+                        
+                        while datetime.now() < (lastscan + timedelta(seconds=10)): sleep(0.5)
+                        
                         log.info('Looking closer for %d pokes, step %d (max %d)' % (len(Ptargets),s,len(subgrid)))
     
                         response_dict = None
                         while response_dict is None:
-                            sleep(10)
                             timestamps = [0,] * len(cell_ids)
                             api.set_position(slat, slng, alt)
                             try: response_dict = api.get_map_objects(latitude=slat, longitude=slng, since_timestamp_ms = timestamps, cell_id = cell_ids)
-                            except NotLoggedInException: api = None; api = api_init(config)
+                            except NotLoggedInException, AuthException: api = None; api = api_init(config)
+                            finally: lastscan = datetime.now()
     
                         for map_cell in response_dict['responses']['GET_MAP_OBJECTS']['map_cells']:
                             if 'catchable_pokemons' in map_cell:
