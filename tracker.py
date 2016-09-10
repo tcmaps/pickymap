@@ -239,6 +239,8 @@ class TheFinder(Thread):
                     s += 1
                 
                 Pque.pop(0)
+                
+            else: sleep(1)
 #
 
 def main():
